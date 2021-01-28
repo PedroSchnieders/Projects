@@ -1,0 +1,146 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+import time
+from statsmodels.graphics.tsaplots import plot_acf
+
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.stattools import adfuller, kpss, acf, pacf, grangercausalitytests
+
+
+# Import the csv file for the Regression - created with Excel 
+Regression = pd.read_csv(r'C:\Users\31653\Desktop\Universiteit\Master Thesis\Regression\Regression Dataset.csv')
+
+# Create new columns with double differencing 
+Regression['VW_Stock_dfClose'] = (Regression['VW_Close'].diff()).diff()
+Regression['VW_Stock_dfOpen'] = (Regression['VW_Open'].diff()).diff()
+Regression['VW_Volume_df'] = (Regression['VW_Volume'].diff()).diff()
+
+
+Regression['BMW_Stock_dfClose'] = (Regression['BMW_Close'].diff()).diff()
+Regression['BMW_Stock_dfOpen'] = (Regression['BMW_Open'].diff()).diff()
+Regression['BMW_Volume_df'] = (Regression['BMW_Volume'].diff()).diff()
+
+Regression['FCA_Stock_dfClose'] = (Regression['FCA_Close'].diff()).diff()
+Regression['FCA_Stock_dfOpen'] = (Regression['FCA_Open'].diff()).diff()
+Regression['FCA_Volume_df'] = (Regression['FCA_Volume'].diff()).diff()
+
+
+Regression[['VW_Stock_dfClose', 'VW_Stock_dfOpen', 'VW_Volume_df', 'BMW_Stock_dfClose', 
+            'BMW_Stock_dfOpen', 'BMW_Volume_df', 'FCA_Stock_dfClose', 'FCA_Stock_dfOpen', 
+            'FCA_Volume_df']].iloc[3:]  
+            
+# Performing the Dickey Fuller Test after differencing - Making the data stationary for Regression
+Y = Regression['VW_Volume_df'].dropna()
+result = adfuller(Y)
+print('ADF Statistic: %f' % result[0])
+print('p-value: %f' % result[1])
+print('Critical Values:')
+for key, value in result[4].items():
+	print('\t%s: %.3f' % (key, value))
+  
+  # Performing the Dickey Fuller Test after differencing - Making the data stationary for Regression
+Y = Regression['FCA_Stock_dfClose'].dropna()
+result = adfuller(Y)
+print('ADF Statistic: %f' % result[0])
+print('p-value: %f' % result[1])
+print('Critical Values:')
+for key, value in result[4].items():
+	print('\t%s: %.3f' % (key, value))
+  
+  # Performing Granger Causality on all variables with maximum amount of lags: 5
+# Parameters for the grangercausalitytests is y is granger caused by x, so the other way around we are usually used to
+Regression = Regression.dropna()
+res = grangercausalitytests(Regression[['FCA_Stock_dfOpen', 'SenPosRep']], maxlag=5)
+
+Regression.head(5)
+
+# Filter the columns to select the columns needed to create the correaltion matrices for each car manufacturer
+
+# Dataframes Correlation matrixes H1 & H2 
+Correlation_Matrix_H1 = pd.DataFrame(Regression ,columns=['SenPositive', 'SenNegative', 
+                                                          'VW_Stock_dfOpen', 'VW_Stock_dfClose', 
+                                                          'BMW_Stock_dfOpen', 'BMW_Stock_dfClose',
+                                                          'FCA_Stock_dfOpen','FCA_Stock_dfClose']) 
+
+Correlation_Matrix_H2 = pd.DataFrame(Regression ,columns=['SenNegDem','SenNegRep','SenPosDem',
+                                                          'SenPosRep','VW_Stock_dfOpen', 'VW_Stock_dfClose', 
+                                                          'BMW_Stock_dfOpen', 'BMW_Stock_dfClose',
+                                                          'FCA_Stock_dfOpen','FCA_Stock_dfClose']) 
+
+# Dataframes Correlation matrixes H3 to H6 
+Correlation_Matrix_H3 = pd.DataFrame(Regression ,columns=['SenNegDem','SenNegRep','SenPosDem',
+                                                          'SenPosRep','VW_Volume_df','BMW_Volume_df',
+                                                          'FCA_Volume_df'])
+
+#Building the correlation matrix - performed for each car manufacturer
+corrMatrix = Correlation_Matrix_H2.corr()
+
+mask = np.zeros_like(corrMatrix)
+mask[np.triu_indices_from(mask)] = True
+with sns.axes_style("white"):
+    f, ax = plt.subplots(figsize=(45, 10))
+    ax = sns.heatmap(corrMatrix, mask=mask, fmt=".3", cmap= "Greens", vmax=.1, square=True, annot=True)
+    
+ax.set_title('Correlation Coefficient Political-Oriented Twitter Sentiment', fontsize = 20)
+plt.xticks(rotation = 90, fontsize=10)
+plt.show()
+
+# Calculating the significance of between all different variables of the correlation matrix 
+import scipy.stats
+
+x = Regression['SenPosRep']
+y = Regression['FCA_Stock_dfClose']
+result = scipy.stats.linregress(x, y)
+result
+
+#Multivariate Regression 
+from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
+
+#OLS on H1 & H2, the X and Y are altered for H3 to H6 
+X= Regression[['SenPositive','SenNegative']]
+y= Regression['BMW_Stock_dfOpen']
+
+
+# Note the difference in argument order
+model = sm.OLS(y, X).fit()
+predictions = model.predict(X) # make the predictions by the model
+X = sm.add_constant(X)
+
+result = scipy.stats.linregress(x, y)
+
+# Print out the statistics
+model.summary() 
+ 
+ Regression['SenPositive'] = (Regression['SenPositive'].shift(-4))
+Regression['SenPositive'].fillna(Regression['SenPositive'].mean(), inplace = True)
+Regression['SenNegative'] = (Regression['SenNegative'].shift(-5))
+Regression['SenNegative'].fillna(Regression['SenNegative'].mean(), inplace = True)
+Regression
+
+Regression['SenPosDem'] = (Regression['SenPosDem'].shift(0))
+Regression['SenPosDem'].fillna(Regression['SenPosDem'].mean(), inplace = True)
+Regression['SenNegDem'] = (Regression['SenNegDem'].shift(-2))
+Regression['SenNegDem'].fillna(Regression['SenNegDem'].mean(), inplace = True)
+Regression['SenPosRep'] = (Regression['SenPosRep'].shift(-1))
+Regression['SenPosRep'].fillna(Regression['SenPosRep'].mean(), inplace = True)
+Regression['SenNegRep'] = (Regression['SenNegRep'].shift(0))
+Regression['SenNegRep'].fillna(Regression['SenNegRep'].mean(), inplace = True)
+
+# Set the independent and dependent variables for the mulivariate Regression models
+X= Regression[['SenNegDem','SenNegRep','SenPosDem','SenPosRep']]
+y= Regression['BMW_Stock_dfClose']
+
+# Fitting the Note the difference in argument order
+model = sm.OLS(y, X).fit()
+predictions = model.predict(X) # make the predictions by the model
+X = sm.add_constant(X)
+
+result = scipy.stats.linregress(x, y)
+
+# Print out the statistics
+model.summary() 
+
