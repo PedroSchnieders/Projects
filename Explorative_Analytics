@@ -248,3 +248,11 @@ print('p-value: %f' % result[1])
 print('Critical Values:')
 for key, value in result[4].items():
 	print('\t%s: %.3f' % (key, value))
+
+VW_Stock_index
+from statsmodels.tsa.stattools import adfuller, kpss, acf, pacf, grangercausalitytests
+
+Dataset_thesis_total = Dataset_thesis[Dataset_thesis['text']
+
+X = Dataset_thesis_dem.groupby(['day'])['Compound'].describe() 
+X
