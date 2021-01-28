@@ -1,0 +1,250 @@
+import glob
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+import time
+import tweepy
+import re
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
+from statsmodels.graphics.tsaplots import plot_acf
+
+#Merge all the scraped data files into one big file called Dataset_thesis 
+path = r'C:\Users\31653\Desktop\Merged Data' 
+all_files = glob.glob(path + "/*.csv")
+
+li = []
+
+for filename in all_files:
+    df = pd.read_csv(filename, index_col=None, header=0)
+    li.append(df)
+
+Dataset_thesis = pd.concat(li, axis=0, ignore_index=True)
+
+Dataset_thesis.head()
+
+pd.set_option('display.max_colwidth', -1)
+Dataset_thesis['text'].head(5)
+
+#functions for cleaning the tweets
+def remove_pattern(input_txt, pattern):
+    r = re.findall(pattern, input_txt)
+    for i in r:
+        input_txt = re.sub(i, '', input_txt)        
+    return input_txt
+
+def clean_tweets(tweets):
+    # Removing the RT sign for retweets 
+    tweets = np.vectorize(remove_pattern)(tweets, "RT @[\w]*:") 
+    
+    # removing the twitter handles 
+    tweets = np.vectorize(remove_pattern)(tweets, "@[\w]*")
+    
+    # removing the URL links 
+    tweets = np.vectorize(remove_pattern)(tweets, "https?://[A-Za-z0-9./]*")
+    
+    # removing special characters, numbers, punctuations (except for #)
+    tweets = np.core.defchararray.replace(tweets, "[^a-zA-Z]", " ")
+    
+    return tweets
+    
+    #The set_option was set to make sure the entire tweet will be visible 
+pd.set_option('display.max_colwidth', -1)
+Dataset_thesis['text'] = clean_tweets(Dataset_thesis['text'])
+Dataset_thesis['text'].head(5)
+
+#Creating lists for different Sentiment Score  
+scores = []
+
+# Variable decleration for different sentiments 
+compound_list = []
+positive_list = []
+negative_list = []
+neutral_list = []
+
+#Setting the VADER tool to function 'analyzer': 
+analyzer = SentimentIntensityAnalyzer()
+
+for i in range(Dataset_thesis['text'].shape[0]):
+#Setting variables for the different polarity scores 
+    compound = analyzer.polarity_scores(Dataset_thesis['text'][i])["compound"]
+    pos = analyzer.polarity_scores(Dataset_thesis['text'][i])["pos"]
+    neu = analyzer.polarity_scores(Dataset_thesis['text'][i])["neu"]
+    neg = analyzer.polarity_scores(Dataset_thesis['text'][i])["neg"]
+    
+    scores.append({"Compound": compound,
+                       "Positive": pos,
+                       "Negative": neg,
+                       "Neutral": neu
+                  })
+    
+sentiments_score = pd.DataFrame.from_dict(scores)
+Dataset_thesis = Dataset_thesis.join(sentiments_score)
+print(Dataset_thesis.head()) 
+
+Dataset_thesis[['text','Compound']].head(4)
+
+#Setting date as index for the dataset 
+Dataset_thesis['day'] = pd.to_datetime(Dataset_thesis['tweetcreatedts']).dt.date 
+Dataset_thesis = Dataset_thesis[Dataset_thesis.day != "2020-09-28"]
+Dataset_thesis = Dataset_thesis.set_index('day')
+Dataset_thesis.head()
+
+#Creating the plots that show the frequenc
+x = Dataset_thesis.groupby(['day'])['Negative'].describe()
+
+fig, ax = plt.subplots()
+
+sns.set(rc={'figure.figsize':(20, 10)})
+sns.set_style("dark")
+sns.despine(left=True)
+
+ax.set_xlabel('Compound Score', fontsize=30)
+ax.set_ylabel('Time Period', fontsize=30)
+ax.grid(True)
+
+x['mean'].plot(linestyle='-', linewidth=3.0);
+
+plt.title('Average Compound Score from the 28th of September till the 2nd of November', fontsize=30)
+plt.xticks(rotation = 70, fontsize=25)
+plt.yticks(fontsize=25)
+plt.ylim(-0.50, 0.50)
+plt.show()
+
+Dataset_thesis['Boxplot_data'] = pd.to_datetime(Dataset_thesis['tweetcreatedts']).dt.date 
+Dataset_thesis.shape
+
+# Draw a vertical boxplot grouped  
+# by a categorical variable: 
+sns.set_style("whitegrid") 
+
+  
+sns.boxplot(x = 'Boxplot_data', y = 'Compound', data = Dataset_thesis) 
+
+Dataset_thesis['text'] = Dataset_thesis['text'].map(lambda x: x.lower())
+
+#Counts of instances in which the hashtags occur 
+counts = ["#republican", "#conservative", "#trump", "#donaldtrump", "#maga",
+          "#democrat", "#liberal", "#biden", "#joebiden", "#voteblue"]
+for hashtag in counts:
+    print([[Dataset_thesis['text'].str.count(hashtag).sum()]])
+    
+#Creation of the two datasets splitting the tweets with democratic- and republican oriented tweets
+Dataset_thesis_rep = Dataset_thesis[Dataset_thesis['text'].str.contains('#republican|#conservative|#trump
+                                                                        |#donaldtrump|#maga', regex=True)]
+Dataset_thesis_dem = Dataset_thesis[Dataset_thesis['text'].str.contains('#democrat|#liberal|#biden
+                                                                        |#joebidden|#voteblue', regex=True)]
+
+# Creating table with summary stistics. I used the 'count' column for creating plots                                                                        
+y = Dataset_thesis_dem.groupby(['day']).describe()
+
+fig, ax = plt.subplots()
+
+sns.set(rc={'figure.figsize':(18, 10)})
+sns.set_style("dark")
+sns.despine(left=True)
+
+y['count'].plot(linestyle='-', linewidth=3.0);
+
+ax.set_xlabel('Count', fontsize=18)
+ax.set_ylabel('Time Period', fontsize=18)
+ax.set_title('#conservative')
+ax.grid(True)
+
+plt.title('Democrat Tweets', fontsize=45)
+plt.xticks(rotation = 70, fontsize=18)
+plt.yticks(fontsize=40)
+plt.show()
+
+z = Dataset_thesis_rep.groupby(['day'])['Compound'].describe()
+
+fig, ax = plt.subplots()
+
+sns.set(rc={'figure.figsize':(18, 10)})
+sns.set_style("dark")
+sns.despine(left=True)
+
+z['count'].plot(linestyle='-', linewidth=3.0);
+
+ax.set_xlabel('Count', fontsize=18)
+ax.set_ylabel('Time Period', fontsize=18)
+ax.set_title('#conservative')
+ax.grid(True)
+
+plt.title('Republican Tweets', fontsize=45)
+plt.xticks(rotation = 70, fontsize=18)
+plt.yticks(fontsize=40)
+plt.show()
+
+# Importing the stock data for the car manufacturers 
+Regression = pd.read_csv(r'C:\Users\31653\Desktop\Universiteit\Master Thesis\Regression\Regression Dataset.csv')
+
+#Creating Extra columns for the percentual change 
+Regression["FCA_pctChange"] = (Regression["FCA_Close"].pct_change()) * 100 
+Regression["VW_pctChange"] = (Regression["VW_Close"].pct_change()) * 100 
+Regression["BMW_pctChange"] = (Regression["BMW_Close"].pct_change()) * 100 
+
+Regression["FCA_pctChange_Volume"] = (Regression["FCA_Volume"].pct_change()) * 100 
+Regression["VW_pctChange_Volume"] = (Regression["VW_Volume"].pct_change()) * 100 
+Regression["BMW_pctChange_Volume"] = (Regression["BMW_Volume"].pct_change()) * 100 
+
+Regression.head(5)
+
+# Creating the plots for the stock data - same code for the Trading Volumes
+fig, ax = plt.subplots()
+
+y_FCA = Regression["FCA_pctChange"].dropna()
+y_VW = Regression["VW_pctChange"].dropna()
+y_BMW = Regression["BMW_pctChange"].dropna()
+
+plt.plot(y_FCA, linestyle='-', linewidth=3.0, label="FCA");
+plt.plot(y_VW, linestyle='-', linewidth=3.0, label="VW");
+plt.plot(y_BMW, linestyle='-', linewidth=3.0, label="BMW");
+
+sns.set(rc={'figure.figsize':(18, 10)})
+sns.set_style("dark")
+sns.despine(left=True)
+
+ax.set_xlabel('time period', fontsize=20)
+ax.set_ylabel('Percentual change stock', fontsize=20)
+ax.grid(True)
+
+plt.title('Stock Indexes Car Manufacturers', fontsize=30)
+plt.legend(loc="upper left")
+plt.xticks(rotation = 40, fontsize=18)
+plt.yticks(fontsize=18)
+plt.show()
+
+# Creating the Autocorrelation Plots. This was done for each independent and dependent variable
+plot_acf(Regression['VW_Volume'].dropna(), lags=27, alpha = 0.05)
+plt.title('VW_Volume')
+plt.show()
+
+
+Y = Regression['BMW_Volume'].dropna()
+result = adfuller(Y)
+print('ADF Statistic: %f' % result[0])
+print('p-value: %f' % result[1])
+print('Critical Values:')
+for key, value in result[4].items():
+	print('\t%s: %.3f' % (key, value))
+  
+  Y = VOLVO_Stock_index['Volvo_Open'].dropna()
+result = adfuller(Y)
+print('ADF Statistic: %f' % result[0])
+print('p-value: %f' % result[1])
+print('Critical Values:')
+for key, value in result[4].items():
+	print('\t%s: %.3f' % (key, value))
+  
+  VW_Stock_index['VW_Stock_dfClose'] = (VW_Stock_index['VW_Close'].diff()).diff()
+  
+Y = VW_Stock_index['VW_Stock_dfClose'].dropna()
+result = adfuller(Y)
+print('ADF Statistic: %f' % result[0])
+print('p-value: %f' % result[1])
+print('Critical Values:')
+for key, value in result[4].items():
+	print('\t%s: %.3f' % (key, value))
